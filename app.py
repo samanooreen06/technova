@@ -9,6 +9,7 @@ import json
 import os
 
 app = Flask(__name__)
+model = pickle.load(open("startup_model.pkl","rb"))
 app.config['SECRET_KEY'] = 'your-secret-key-change-this'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 db = SQLAlchemy(app)
@@ -278,12 +279,13 @@ def dashboard():
                              .all()
     return render_template('dashboard.html', analyses=analyses)
 
-@app.route('/analyze/new')
+
+@app.route('/analyze', methods=['GET'])
 @login_required
 def new_analysis():
-    return render_template('form.html')
-
-@app.route('/analyze', methods=['POST'])
+        return render_template('form.html')
+    
+@app.route('/analyze/start', methods=['POST'])
 @login_required
 def analyze():
     # Get form data
@@ -316,43 +318,54 @@ def analyze():
     
     # Save to database
     import json
-    new_analysis = Analysis(
-        user_id=current_user.id,
-        startup_name=form_data['startup_name'],
-        score=score,
-        category=category,
-        inputs=json.dumps(form_data),
-        factors=json.dumps(factors),
-        industry=form_data['industry_sector'],
-        market_type=form_data['market_type'],
-        initial_funding=form_data['initial_funding'],
-        team_size=form_data['team_size'],
-        country=form_data['country_region']
+
+    new_analysis_obj = Analysis(
+    user_id=current_user.id,
+    startup_name=form_data['startup_name'],
+    score=score,
+    category=category,
+    inputs=json.dumps(form_data),
+    factors=json.dumps(factors),
+    industry=form_data['industry_sector'],
+    market_type=form_data['market_type'],
+    initial_funding=form_data['initial_funding'],
+    team_size=form_data['team_size'],
+    country=form_data['country_region']
     )
-    db.session.add(new_analysis)
+
+    db.session.add(new_analysis_obj)
     db.session.commit()
     
-    # Store in session for results page
-    session['current_analysis'] = {
-        'id': new_analysis.id,
-        'startup_name': form_data['startup_name'],
-        'score': score,
-        'category': category,
-        'factors': factors,
-        'recommendations': recommendations,
-        'inputs': form_data
-    }
-    
-    return redirect(url_for('results'))
+    return redirect(url_for('results', analysis_id=new_analysis_obj.id))
 
-@app.route('/results')
+@app.route('/results/<int:analysis_id>')
 @login_required
-def results():
-    if 'current_analysis' not in session:
+def results(analysis_id):
+    analysis = Analysis.query.get_or_404(analysis_id)
+    
+    # Ensure user owns this analysis
+    if analysis.user_id != current_user.id:
+        flash('Access denied')
         return redirect(url_for('dashboard'))
     
-    analysis = session['current_analysis']
-    return render_template('results.html', analysis=analysis)
+    # Load analysis data
+    inputs = json.loads(analysis.inputs)
+    factors = json.loads(analysis.factors)
+    
+    # Generate recommendations
+    recommendations = generate_recommendations(analysis.score, factors, analysis.category, inputs)
+    
+    analysis_data = {
+        'id': analysis.id,
+        'startup_name': analysis.startup_name,
+        'score': analysis.score,
+        'category': analysis.category,
+        'factors': factors,
+        'recommendations': recommendations,
+        'inputs': inputs
+    }
+    
+    return render_template('results.html', analysis=analysis_data)
 
 @app.route('/simulate', methods=['POST'])
 @login_required
@@ -389,6 +402,7 @@ def simulate():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
 
 @app.route('/load_analysis/<int:analysis_id>')
 @login_required
