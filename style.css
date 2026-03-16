@@ -1555,7 +1555,7 @@ p {
 }
 
 .footer-column a {
-    display: inline-block;
+    display: block;
     color: var(--lavender);
     text-decoration: none;
     font-size: 1.05rem;
