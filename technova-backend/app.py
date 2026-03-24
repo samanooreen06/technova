@@ -7,6 +7,16 @@ import pandas as pd
 import numpy as np
 import json
 import os
+import google.generativeai as genai
+import PyPDF2
+from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+
+load_dotenv()
+try:
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+except Exception as e:
+    print(f"Warning: Gemini API Key not configured properly: {e}")
 
 app = Flask(__name__)
 model = pickle.load(open("startup_model.pkl","rb"))
@@ -216,6 +226,48 @@ def generate_recommendations(score, factors, category, inputs):
     
     return recommendations[:5]  # Return top 5 recommendations
 
+
+# ===== NLP GEMINI EXTRACTOR =====
+def extract_startup_parameters(description):
+    """Uses Gemini to extract 8 subjective parameters from startup description"""
+    if not description or len(description) < 15:
+        return {}
+    
+    prompt = f"""
+    Analyze the following startup business description and predict scores on a scale of 1 to 10 for the following 8 metrics.
+    Be objective, realistic, and critical based on the information provided.
+    Return ONLY a valid JSON object with the exact keys below.
+    
+    Keys to evaluate (1-10):
+    - market_demand (Demand from target audience)
+    - pain_point (Severity of the problem solved)
+    - novelty (Uniqueness of the idea)
+    - scalability (Potential to grow without proportional cost)
+    - barriers (Barriers to entry for new competitors, high is better for the startup)
+    - revenue_strength (Viability of the revenue model)
+    - acquisition_difficulty (Difficulty to acquire customers, 10=very high difficulty)
+    - willingness_to_pay (Customer's willingness to pay for the solution)
+    
+    Startup Description:
+    {description}
+    """
+    
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        
+        # Parse JSON from response
+        import re
+        json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group())
+            print("✅ Gemini successfully extracted parameters:", data)
+            return data
+    except Exception as e:
+        print(f"❌ Gemini evaluation failed: {e}")
+    
+    return {}
+
 # ===== ROUTES =====
 @app.route('/')
 def index():
@@ -288,7 +340,24 @@ def new_analysis():
 @app.route('/analyze/start', methods=['POST'])
 @login_required
 def analyze():
-    # Get form data
+    # Process PDF if provided
+    pdf_text = ""
+    if 'idea_pdf' in request.files:
+        file = request.files['idea_pdf']
+        if file.filename != '':
+            try:
+                reader = PyPDF2.PdfReader(file)
+                pdf_text = " ".join([page.extract_text() for page in reader.pages if page.extract_text()])
+            except Exception as e:
+                print(f"PDF extraction error: {e}")
+                
+    idea_description = request.form.get('idea_description', '')
+    combined_text = idea_description + "\n\n" + pdf_text
+    
+    # Extract AI parameters
+    ai_params = extract_startup_parameters(combined_text)
+    
+    # Get form data using AI params as fallback overrides
     form_data = {
         'startup_name': request.form.get('startup_name'),
         'industry_sector': request.form.get('industry_sector'),
@@ -299,15 +368,16 @@ def analyze():
         'funding_rounds': int(request.form.get('funding_rounds', 1)),
         'competitors': int(request.form.get('competitors', 50)),
         'year_founded': int(request.form.get('year_founded', 2024)),
-        'market_demand': int(request.form.get('market_demand', 5)),
-        'pain_point': int(request.form.get('pain_point', 5)),
-        'novelty': int(request.form.get('novelty', 5)),
-        'scalability': int(request.form.get('scalability', 5)),
-        'barriers': int(request.form.get('barriers', 5)),
-        'revenue_strength': int(request.form.get('revenue_strength', 5)),
-        'acquisition_difficulty': int(request.form.get('acquisition_difficulty', 5)),
-        'willingness_to_pay': int(request.form.get('willingness_to_pay', 5)),
-        'idea_description': request.form.get('idea_description', '')
+        'market_demand': int(ai_params.get('market_demand', 5)),
+        'pain_point': int(ai_params.get('pain_point', 5)),
+        'novelty': int(ai_params.get('novelty', 5)),
+        'scalability': int(ai_params.get('scalability', 5)),
+        'barriers': int(ai_params.get('barriers', 5)),
+        'revenue_strength': int(ai_params.get('revenue_strength', 5)),
+        'acquisition_difficulty': int(ai_params.get('acquisition_difficulty', 5)),
+        'willingness_to_pay': int(ai_params.get('willingness_to_pay', 5)),
+        'idea_description': combined_text,
+        'ai_predictions_used': True if ai_params else False
     }
     
     # Get prediction
@@ -370,37 +440,44 @@ def results(analysis_id):
 @app.route('/simulate', methods=['POST'])
 @login_required
 def simulate():
-    """API endpoint for real-time simulation"""
+    """API endpoint for real-time simulation using ML model"""
     try:
         data = request.json
-        base_factors = data['factors']
-        adjustments = data.get('adjustments', {})
+        analysis_id = data.get('analysis_id')
         
-        # Calculate new scores
-        new_factors = {}
-        for factor, base_score_val in base_factors.items():
-            adj = adjustments.get(factor, 0)
-            new_factors[factor] = min(100, max(0, base_score_val + adj))
+        analysis = Analysis.query.get(analysis_id)
+        if not analysis or analysis.user_id != current_user.id:
+            return jsonify({'error': 'Unauthorized or Not Found'}), 404
+            
+        # Get original form inputs
+        base_inputs = json.loads(analysis.inputs)
         
-        # Calculate new overall score (weighted average)
-        weights = {'Market': 0.25, 'Team': 0.20, 'Product': 0.20, 
-                   'Financials': 0.20, 'Competition': 0.15}
-        new_score = 0
-        for factor, weight in weights.items():
-            if factor in new_factors:
-                new_score += new_factors[factor] * weight
+        # Apply deltas from frontend
+        funding_pct = float(data.get('funding_delta_pct', 0))
+        base_inputs['initial_funding'] = float(base_inputs.get('initial_funding', 0)) * (1 + (funding_pct / 100.0))
         
-        new_score = round(new_score, 1)
+        team_delta = int(data.get('team_delta', 0))
+        base_inputs['team_size'] = max(1, int(base_inputs.get('team_size', 1)) + team_delta)
         
-        # Determine new category
-        new_category = score_to_category(new_score)
+        comp_val = int(data.get('competition_val', 5))
+        base_inputs['competitors'] = comp_val * 10  # roughly scale 1-10 to 10-100
+        
+        mkt_pct = float(data.get('marketing_delta_pct', 0))
+        acq_diff = float(base_inputs.get('acquisition_difficulty', 5))
+        new_acq = max(1, acq_diff - (mkt_pct / 50.0))
+        base_inputs['acquisition_difficulty'] = round(new_acq)
+        
+        # Run true ML Prediction
+        score, category, factors = predict_startup(base_inputs)
         
         return jsonify({
-            'score': new_score,
-            'category': new_category,
-            'factors': new_factors
+            'score': score,
+            'category': category,
+            'factors': factors
         })
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 400
 
 

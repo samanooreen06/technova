@@ -345,8 +345,6 @@
                 {% for analysis in analyses %}
                 <div class="analysis-card" onclick="window.location='{{ url_for('results', analysis_id=analysis.id) }}'">
 
-                <div class="analysis-card" onclick="window.location='{{ url_for('load_analysis', analysis_id=analysis.id) }}'">
-
                     <div class="analysis-header">
                         <h3 class="analysis-name">{{ analysis.startup_name }}</h3>
                         <span class="badge category-{{ analysis.category.lower() }}">

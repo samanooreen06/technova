@@ -332,7 +332,7 @@
         </div>
         
 
-        <form method="POST" action="{{ url_for('analyze') }}" class="analysis-form" id="analysisForm">
+        <form method="POST" action="{{ url_for('analyze') }}" class="analysis-form" id="analysisForm" enctype="multipart/form-data">
 
             <!-- Basic Information -->
             <div class="form-section">
@@ -345,7 +345,7 @@
                     </div>
                     
                     <div class="form-group">
-                        <label for="industry_sector">Industry Sector *</label>
+                        <label for="industry_sector">Industry Sector * <span class="tooltip">ℹ️<span class="tooltip-text">The primary industry your startup operates in.</span></span></label>
                         <select id="industry_sector" name="industry_sector" required class="form-select">
                             <option value="">Select industry</option>
                             <option value="Technology">Technology</option>
@@ -367,7 +367,7 @@
                 
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="market_type">Market Type *</label>
+                        <label for="market_type">Market Type * <span class="tooltip">ℹ️<span class="tooltip-text">B2B (selling to businesses) or B2C (selling to consumers).</span></span></label>
                         <select id="market_type" name="market_type" required class="form-select">
                             <option value="">Select market type</option>
                             <option value="B2B">B2B (Business to Business)</option>
@@ -438,79 +438,22 @@
                 </div>
             </div>
             
-            <!-- Product & Market Scores (1-10 scale) -->
-            <div class="form-section">
-                <h2 class="section-title">📊 Product & Market Assessment</h2>
-                <p class="section-description">Rate each factor on a scale of 1 (very low) to 10 (very high)</p>
-                
-                <div class="scores-grid">
-                    <div class="score-item">
-                        <label for="market_demand">Market Demand</label>
-                        <input type="range" id="market_demand" name="market_demand" 
-                               min="1" max="10" value="7" class="score-slider" oninput="updateScore(this, 'market_demand_val')">
-                        <output id="market_demand_val" class="score-value">7</output>
-                    </div>
-                    
-                    <div class="score-item">
-                        <label for="pain_point">Pain Point Severity</label>
-                        <input type="range" id="pain_point" name="pain_point" 
-                               min="1" max="10" value="6" class="score-slider" oninput="updateScore(this, 'pain_point_val')">
-                        <output id="pain_point_val" class="score-value">6</output>
-                    </div>
-                    
-                    <div class="score-item">
-                        <label for="novelty">Idea Novelty</label>
-                        <input type="range" id="novelty" name="novelty" 
-                               min="1" max="10" value="7" class="score-slider" oninput="updateScore(this, 'novelty_val')">
-                        <output id="novelty_val" class="score-value">7</output>
-                    </div>
-                    
-                    <div class="score-item">
-                        <label for="scalability">Scalability</label>
-                        <input type="range" id="scalability" name="scalability" 
-                               min="1" max="10" value="7" class="score-slider" oninput="updateScore(this, 'scalability_val')">
-                        <output id="scalability_val" class="score-value">7</output>
-                    </div>
-                    
-                    <div class="score-item">
-                        <label for="barriers">Barriers to Entry</label>
-                        <input type="range" id="barriers" name="barriers" 
-                               min="1" max="10" value="5" class="score-slider" oninput="updateScore(this, 'barriers_val')">
-                        <output id="barriers_val" class="score-value">5</output>
-                    </div>
-                    
-                    <div class="score-item">
-                        <label for="revenue_strength">Revenue Model Strength</label>
-                        <input type="range" id="revenue_strength" name="revenue_strength" 
-                               min="1" max="10" value="6" class="score-slider" oninput="updateScore(this, 'revenue_strength_val')">
-                        <output id="revenue_strength_val" class="score-value">6</output>
-                    </div>
-                    
-                    <div class="score-item">
-                        <label for="acquisition_difficulty">Customer Acquisition Difficulty</label>
-                        <input type="range" id="acquisition_difficulty" name="acquisition_difficulty" 
-                               min="1" max="10" value="5" class="score-slider" oninput="updateScore(this, 'acquisition_difficulty_val')">
-                        <output id="acquisition_difficulty_val" class="score-value">5</output>
-                    </div>
-                    
-                    <div class="score-item">
-                        <label for="willingness_to_pay">Customer Willingness to Pay</label>
-                        <input type="range" id="willingness_to_pay" name="willingness_to_pay" 
-                               min="1" max="10" value="7" class="score-slider" oninput="updateScore(this, 'willingness_to_pay_val')">
-                        <output id="willingness_to_pay_val" class="score-value">7</output>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Idea Description -->
+            <!-- Startup Idea Description (Text + PDF) -->
             <div class="form-section">
                 <h2 class="section-title">💡 Startup Idea Description</h2>
                 <div class="form-group">
-                    <label for="idea_description">Describe your startup idea in detail *</label>
-                    <textarea id="idea_description" name="idea_description" rows="6" required
+                    <label for="idea_description">Describe your startup idea (Optional if uploading PDF)</label>
+                    <textarea id="idea_description" name="idea_description" rows="6"
                               placeholder="What problem does it solve? Who are your target customers? What makes your solution unique?" 
                               class="form-textarea"></textarea>
-                    <small class="form-help">Minimum 50 characters recommended</small>
+                </div>
+                
+                <div class="form-group" style="margin-top: 1.5rem;">
+                    <label for="idea_pdf" style="display: flex; align-items: center; font-weight: 500;">
+                        Upload Business Plan / Pitch Deck (PDF) &nbsp; <span class="tooltip">ℹ️<span class="tooltip-text" style="width: 250px; text-align: left;">Our AI (Gemini) will read your PDF to evaluate your market demand, novelty, scalability, and other soft metrics to feed into the ML model.</span></span>
+                    </label>
+                    <input type="file" id="idea_pdf" name="idea_pdf" accept="application/pdf" class="form-input" style="padding: 0.5rem; background: #fff;">
+                    <small class="form-help">Max file size 5MB. Providing a detailed text description or PDF is highly recommended for accurate AI assessment.</small>
                 </div>
             </div>
             
@@ -534,6 +477,7 @@
         document.getElementById('analysisForm').addEventListener('submit', function(e) {
             const startupName = document.getElementById('startup_name').value.trim();
             const description = document.getElementById('idea_description').value.trim();
+            const pdfFile = document.getElementById('idea_pdf').files.length;
             
             if (startupName.length < 2) {
                 e.preventDefault();
@@ -541,12 +485,16 @@
                 return;
             }
             
-            if (description.length < 50) {
-                const proceed = confirm('Your description is quite short. For better analysis, please provide more details. Do you want to continue anyway?');
-                if (!proceed) {
-                    e.preventDefault();
-                }
+            if (description.length < 10 && pdfFile === 0) {
+                e.preventDefault();
+                alert('Please provide a short description or upload a business plan PDF for the AI to analyze.');
+                return;
             }
+            
+            // Show loading overlay or button change
+            const btn = document.querySelector('button[type="submit"]');
+            btn.innerHTML = '⚙️ Analyzing with AI... Please wait';
+            btn.disabled = true;
         });
         
         // Initialize all sliders
